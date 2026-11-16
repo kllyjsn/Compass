@@ -21,6 +21,10 @@ def test_month_end_mask_ignores_partial_final_month():
     assert not m[-1] and m.sum() == 1
 
 
+def test_month_end_mask_skips_good_friday():
+    assert month_end_mask(pd.bdate_range("2024-03-01", "2024-03-28"))[-1]
+
+
 def test_leverage_math():
     px = _px()
     r = sleeve_returns(px, ["SPY", "SPYx3"])

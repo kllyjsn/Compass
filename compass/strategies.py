@@ -13,6 +13,10 @@ from typing import Callable
 
 import numpy as np
 import pandas as pd
+from pandas.tseries.holiday import (
+    AbstractHolidayCalendar, GoodFriday, Holiday, USLaborDay, USMartinLutherKingJr, USMemorialDay,
+    USPresidentsDay, USThanksgivingDay, nearest_workday, sunday_to_monday,
+)
 
 # Sleeve -> ticker you would actually buy in Robinhood.
 TRADE_TICKER = {
@@ -47,10 +51,24 @@ def _const(w):
     return lambda px: pd.DataFrame({k: v for k, v in w.items()}, index=px.index)
 
 
+class NYSEHolidays(AbstractHolidayCalendar):
+    rules = [
+        Holiday("New Year's Day", month=1, day=1, observance=sunday_to_monday),
+        USMartinLutherKingJr, USPresidentsDay, GoodFriday, USMemorialDay,
+        Holiday("Juneteenth", month=6, day=19, start_date="2022-01-01", observance=nearest_workday),
+        Holiday("Independence Day", month=7, day=4, observance=nearest_workday),
+        USLaborDay, USThanksgivingDay,
+        Holiday("Christmas", month=12, day=25, observance=nearest_workday),
+    ]
+
+
+NYSE_DAY = pd.offsets.CustomBusinessDay(calendar=NYSEHolidays())
+
+
 def month_end_mask(idx: pd.DatetimeIndex) -> np.ndarray:
     """True on the last trading day of each month. The final row counts only if
-    the next business day starts a new month, so a partial month never rebalances."""
-    nxt = np.append(idx.month[1:], (idx[-1] + pd.offsets.BDay(1)).month)
+    the next NYSE trading day starts a new month, so a partial month never rebalances."""
+    nxt = np.append(idx.month[1:], (idx[-1] + NYSE_DAY).month)
     return idx.month != nxt
 
 
