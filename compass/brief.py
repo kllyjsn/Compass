@@ -22,9 +22,11 @@ def _trend_context(px, base):
             f"Exit level (1% below average): **${m * 0.99:,.2f}**. Re-entry level (1% above): **${m * 1.01:,.2f}**.")
 
 
-def build(key: str, value: float | None = None, refresh: bool = True) -> str:
+def build(key: str, value: float | None = None, refresh: bool = True, asof: str | None = None) -> str:
     st = BY_KEY[key]
     px = load(refresh)
+    if asof:
+        px = px.loc[:asof]
     nav, _, target = run(st, px, start=px.index[-600])
     today, prev = target.iloc[-1], target.iloc[-2]
     asof = px.index[-1].strftime("%a %b %d, %Y")
@@ -69,5 +71,6 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("strategy", choices=sorted(BY_KEY))
     ap.add_argument("--value", type=float, help="portfolio value in dollars, to show dollar amounts")
+    ap.add_argument("--asof", help="replay the brief using closes up to this date (YYYY-MM-DD)")
     a = ap.parse_args()
-    print(build(a.strategy, a.value))
+    print(build(a.strategy, a.value, asof=a.asof))
