@@ -2,6 +2,8 @@
 import json
 from pathlib import Path
 
+import pandas as pd
+
 from .backtest import STRESS, load, metrics, run, stress, validate_leverage
 from .strategies import STRATEGIES
 
@@ -14,8 +16,12 @@ def export(path="report/results.json", refresh=False):
            "validation": validate_leverage(), "strategies": []}
     for st in STRATEGIES:
         nav, trades, _ = run(st, px, WINDOWS["2000"])
+        dd_daily = nav / nav.cummax() - 1
         weekly = nav.resample("W-FRI").last().dropna()
-        dd = (nav / nav.cummax() - 1).resample("W-FRI").min().reindex(weekly.index)
+        dd = dd_daily.resample("W-FRI").min().reindex(weekly.index)
+        starts = [nav.index[nav.index >= s][0] for s in WINDOWS.values()]
+        weekly = pd.concat([weekly, nav.loc[starts]]).sort_index()
+        dd = pd.concat([dd, dd_daily.loc[starts]]).sort_index()
         per_window = {}
         for w, start in WINDOWS.items():
             n, t, _ = run(st, px, start)
