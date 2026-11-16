@@ -16,7 +16,7 @@ import pandas as pd
 
 # Sleeve -> ticker you would actually buy in Robinhood.
 TRADE_TICKER = {
-    "SPY": "SPY", "SPYx1.5": "SPY + SSO (≈3:1 mix)", "SPYx2": "SSO", "SPYx3": "UPRO",
+    "SPY": "SPY", "SPYx1.5": "SPY + SSO (50/50 mix)", "SPYx2": "SSO", "SPYx3": "UPRO",
     "QQQ": "QQQ", "QQQx2": "QLD", "QQQx3": "TQQQ",
     "BND": "BND", "TLTx3": "TMF", "SCV": "VBR", "INTL": "VXUS", "CASH": "SGOV",
     "XLB": "XLB", "XLE": "XLE", "XLF": "XLF", "XLI": "XLI", "XLK": "XLK",
@@ -119,7 +119,7 @@ STRATEGIES = [
     Strategy("scv", "Small-cap value (buy & hold)", "Tilt to small, cheap companies (factor premium).",
              "Hold 100% VBR.", _const({"SCV": 1.0}), "Market risk + long stretches of lagging", "never"),
     Strategy("spy15", "S&P 500 at 1.5x", "Modest leverage, rebalanced daily.",
-             "Hold 1.5x S&P exposure (e.g. 3 parts SPY : 1 part SSO, ≈ 1.5x).", _const({"SPYx1.5": 1.0}), "High", "monthly",
+             "Hold 1.5x S&P exposure: 50% SPY + 50% SSO (2x), rebalanced monthly.", _const({"SPYx1.5": 1.0}), "High", "monthly",
              ["leverage"]),
     Strategy("upro", "S&P 500 at 3x (UPRO)", "3x daily-leveraged S&P, held through everything.",
              "Hold 100% UPRO.", _const({"SPYx3": 1.0}), "Extreme: -97% 2000-09 simulated", "never", ["leverage"]),
