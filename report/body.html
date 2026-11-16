@@ -1,0 +1,222 @@
+<div id="root"></div>
+<script type="text/jsx">
+const S = data.strategies;
+const WINDOWS = [
+  { key: "2000", label: "Since 2000", note: "Starts at the dot-com peak: two 50% crashes before the recovery." },
+  { key: "2007", label: "Since 2007", note: "Starts just before the 2008 financial crisis." },
+  { key: "2010", label: "Since 2010", note: "Starts after the 2008 crash: mostly a bull market." },
+  { key: "2016", label: "Last 10 years", note: "Strongest stretch: includes COVID and 2022, but mostly up." },
+];
+const DEFAULT_SHOWN = ["spy", "trend3x", "trend2x", "gem", "upro"];
+const pct = (x, d = 1) => (x == null ? "n/a" : `${(x * 100).toFixed(d)}%`);
+const money = (x) => (x >= 1e6 ? `$${(x / 1e6).toFixed(2)}M` : `$${Math.round(x).toLocaleString()}`);
+const TARGET = 0.15;
+const TICKS = [1e3, 3e3, 1e4, 3e4, 1e5, 3e5, 1e6, 3e6].map(Math.log10);
+
+function rebased(s, start) {
+  const i = s.t.findIndex((d) => d >= start);
+  const base = s.v[i];
+  const out = [];
+  for (let j = i; j < s.t.length; j += 4) out.push([s.t[j], base > 0 ? (s.v[j] / base) * 10000 : 0]);
+  out.push([s.t[s.t.length - 1], (s.v[s.v.length - 1] / base) * 10000]);
+  return out;
+}
+
+const COLS = [
+  { key: "cagr", label: "Return / yr", fmt: (v) => pct(v) },
+  { key: "max_dd", label: "Worst drop", fmt: (v) => pct(v, 0) },
+  { key: "worst_year", label: "Worst year", fmt: (v) => pct(v, 0) },
+  { key: "longest_underwater_years", label: "Longest below a high", fmt: (v) => `${v.toFixed(1)} yrs` },
+  { key: "sharpe", label: "Sharpe", fmt: (v) => v.toFixed(2) },
+  { key: "trades_per_year", label: "Trades / yr", fmt: (v) => v.toFixed(1) },
+  { key: "final_10k", label: "$10k became", fmt: money },
+];
+
+function Report() {
+  const [win, setWin] = useState("2000");
+  const [shown, setShown] = useState(DEFAULT_SHOWN);
+  const [sort, setSort] = useState({ key: "cagr", dir: "desc" });
+  const [detail, setDetail] = useState("trend3x");
+  const W = WINDOWS.find((w) => w.key === win);
+  const start = data.windows[win];
+  const m = (s) => s.metrics[win];
+
+  const ranked = useMemo(() => {
+    const rows = [...S];
+    rows.sort((a, b) => (sort.dir === "desc" ? -1 : 1) * (m(a)[sort.key] - m(b)[sort.key]));
+    return rows;
+  }, [win, sort]);
+  const hit = S.filter((s) => m(s).cagr >= TARGET);
+  const best = [...S].sort((a, b) => m(b).cagr - m(a).cagr)[0];
+  const spy = S.find((s) => s.key === "spy");
+  const bestShallow = [...S].filter((s) => m(s).max_dd > -0.42).sort((a, b) => m(b).cagr - m(a).cagr)[0];
+
+  const chart = useMemo(() => {
+    const rows = new Map();
+    for (const s of S.filter((s) => shown.includes(s.key))) {
+      for (const [t, v] of rebased(s, start)) {
+        if (!rows.has(t)) rows.set(t, { t });
+        rows.get(t)[s.key] = Math.log10(Math.max(v, 100));
+      }
+    }
+    return [...rows.values()].sort((a, b) => (a.t < b.t ? -1 : 1));
+  }, [shown, win]);
+  const allV = chart.flatMap((r) => Object.values(r).filter((v) => typeof v === "number"));
+  const lo = Math.min(...TICKS.filter((t) => t <= Math.min(...allV)).slice(-1), 3);
+  const hi = Math.max(...TICKS.filter((t) => t >= Math.max(...allV)).slice(0, 1), 4.5);
+  const config = Object.fromEntries(
+    S.filter((s) => shown.includes(s.key)).map((s) => [s.key, { label: s.name, color: chartColors[S.indexOf(s) % 9] }])
+  );
+  const d = S.find((s) => s.key === detail);
+  const years = Object.entries(d.yearly).filter(([y]) => y >= win);
+
+  const onSort = (key) => setSort((p) => ({ key, dir: p.key === key && p.dir === "desc" ? "asc" : "desc" }));
+  const toggle = (k) => setShown((p) => (p.includes(k) ? p.filter((x) => x !== k) : [...p, k]));
+
+  return (
+    <PageLayout
+      title="Compass: what does 15% a year actually take?"
+      subtitle={`14 strategies backtested on daily prices through ${data.asof}, with leverage costs, fees and slippage.`}
+      themeToggle
+    >
+      <BannerCard variant={hit.length ? "info" : "warning"} title={
+        hit.length
+          ? `${hit.length} of 14 strategies beat 15% a year ${W.label.toLowerCase()}.`
+          : `None of the 14 strategies earned 15% a year ${W.label.toLowerCase()}.`
+      }>
+        {`Best: ${best.name} at ${pct(m(best).cagr)} a year, but it fell ${pct(m(best).max_dd, 0)} at its worst. `}
+        {`The S&P 500 alone returned ${pct(m(spy).cagr)}. ${W.note}`}
+      </BannerCard>
+
+      <div className="flex flex-wrap items-center gap-3">
+        <Text size={12} className="text-secondary">Start date</Text>
+        <SegmentedControl value={win} onValueChange={setWin}>
+          {WINDOWS.map((w) => <SegmentedControlItem key={w.key} value={w.key}>{w.label}</SegmentedControlItem>)}
+        </SegmentedControl>
+      </div>
+
+      <StatsRow>
+        <StatCard label="S&P 500, return / yr"><StatCardValue>{pct(m(spy).cagr)}</StatCardValue><StatCardCaption>{`Worst drop ${pct(m(spy).max_dd, 0)}`}</StatCardCaption></StatCard>
+        <StatCard label="Highest return / yr"><StatCardValue>{pct(m(best).cagr)}</StatCardValue><StatCardCaption>{best.name}</StatCardCaption></StatCard>
+        <StatCard label="Best with drops under 42%"><StatCardValue>{pct(m(bestShallow).cagr)}</StatCardValue><StatCardCaption>{bestShallow.name}</StatCardCaption></StatCard>
+        <StatCard label="Strategies at 15%+"><StatCardValue>{`${hit.length} / 14`}</StatCardValue><StatCardCaption>{W.label}</StatCardCaption></StatCard>
+      </StatsRow>
+
+      <Card>
+        <CardContent><CardBody>
+          <Text size={14} weight="semibold">Growth of $10,000 (log scale)</Text>
+          <div className="flex flex-wrap gap-2 my-3">
+            {S.map((s) => (
+              <Button key={s.key} size="sm" variant={shown.includes(s.key) ? "primary" : "secondary"} onClick={() => toggle(s.key)}>{s.name}</Button>
+            ))}
+          </div>
+          <ChartContainer config={config} style={{ height: 340, width: "100%" }}>
+            <LineChart data={chart}>
+              <ChartGrid />
+              <ChartXAxis dataKey="t" tickFormatter={(t) => t.slice(0, 4)} minTickGap={40} />
+              <ChartYAxis title="Portfolio value" domain={[lo, hi]} ticks={TICKS.filter((t) => t >= lo && t <= hi)} tickFormatter={(v) => money(10 ** v)} />
+              <ChartTooltip content={<ChartTooltipContent formatter={(v, n) => [money(10 ** v), config[n] ? config[n].label : n]} />} />
+              <ChartLegend content={<ChartLegendContent />} />
+              {Object.keys(config).map((k) => <ChartLine key={k} dataKey={k} dot={false} strokeWidth={1.5} connectNulls />)}
+            </LineChart>
+          </ChartContainer>
+        </CardBody></CardContent>
+      </Card>
+
+      <Table stickyFirstColumn>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Strategy</TableHead>
+            {COLS.map((c) => (
+              <SortableTableHead key={c.key} align="end" sort={sort.key === c.key ? sort.dir : undefined} onSort={() => onSort(c.key)}>{c.label}</SortableTableHead>
+            ))}
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {ranked.map((s) => (
+            <TableRow key={s.key} onClick={() => setDetail(s.key)} className={s.key === detail ? "bg-wash cursor-pointer" : "cursor-pointer"}>
+              <TableCell><Text size={13} weight="medium">{s.name}</Text></TableCell>
+              {COLS.map((c) => {
+                const v = m(s)[c.key];
+                const tone = c.key === "cagr" ? (v >= TARGET ? "text-green" : "") : c.key === "max_dd" ? (v <= -0.5 ? "text-red" : "") : "";
+                return <TableCell key={c.key} className={`text-right tabular-nums ${tone}`}>{c.fmt(v)}</TableCell>;
+              })}
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+      <Text size={12} className="text-secondary">Click a row for its rules and history. Green: 15%+ a year. Red: lost half or more at some point.</Text>
+
+      <Card>
+        <CardContent><CardBody>
+          <div className="flex flex-wrap items-baseline gap-2">
+            <Text size={16} weight="semibold">{d.name}</Text>
+            {d.tags.map((t) => <Badge key={t}>{t}</Badge>)}
+            <Badge variant="blue">{`Checks: ${d.cadence}`}</Badge>
+          </div>
+          <Text size={13} className="text-secondary block mt-1">{d.blurb}</Text>
+          <Text size={13} className="block mt-2"><b>Rule:</b> {d.rule}</Text>
+          <Text size={13} className="block mt-1"><b>Risk:</b> {d.risk}</Text>
+          <div className="grid gap-6 mt-4 md:grid-cols-2">
+            <div>
+              <Text size={12} weight="medium" className="text-secondary">Return by calendar year</Text>
+              <ChartContainer config={{ r: { label: "Return", color: chartColors[0] } }} style={{ height: 200, width: "100%" }}>
+                <BarChart data={years.map(([y, r]) => ({ y, r: +(r * 100).toFixed(1) }))}>
+                  <ChartGrid />
+                  <ChartXAxis dataKey="y" tickFormatter={(y) => `'${y.slice(2)}`} />
+                  <ChartYAxis title="%" />
+                  <ChartTooltip content={<ChartTooltipContent formatter={(v) => [`${v}%`, "Return"]} />} />
+                  <ChartBar dataKey="r">
+                    {years.map(([y, r]) => <Cell key={y} fill={r >= 0 ? "rgb(var(--text-green))" : "rgb(var(--text-red))"} />)}
+                  </ChartBar>
+                </BarChart>
+              </ChartContainer>
+            </div>
+            <div>
+              <Text size={12} weight="medium" className="text-secondary">Through the crashes</Text>
+              <Table>
+                <TableBody>
+                  {Object.entries(d.stress).map(([k, v]) => (
+                    <TableRow key={k}>
+                      <TableCell>{k}</TableCell>
+                      <TableCell className={`text-right tabular-nums ${v < -0.3 ? "text-red" : v > 0 ? "text-green" : ""}`}>{pct(v, 0)}</TableCell>
+                    </TableRow>
+                  ))}
+                  <TableRow>
+                    <TableCell>10-year stretches at 15%+ / yr</TableCell>
+                    <TableCell className="text-right tabular-nums">{pct(d.metrics["2000"].pct_10y_windows_15, 0)}</TableCell>
+                  </TableRow>
+                  <TableRow>
+                    <TableCell>Worst 10-year stretch, return / yr</TableCell>
+                    <TableCell className="text-right tabular-nums">{pct(d.metrics["2000"].worst_10y_cagr)}</TableCell>
+                  </TableRow>
+                </TableBody>
+              </Table>
+            </div>
+          </div>
+        </CardBody></CardContent>
+      </Card>
+
+      <CollapsibleRoot>
+        <CollapsibleTrigger>How much to trust the leveraged results</CollapsibleTrigger>
+        <CollapsiblePanel>
+          <Text size={13} className="text-secondary block my-2">Leveraged ETFs launched in 2006–2010, so earlier years are simulated from daily index returns minus fees and borrowing costs. Over the real ETFs' lifetimes the simulation tracks them closely:</Text>
+          <Table>
+            <TableHeader><TableRow><TableHead>ETF</TableHead><TableHead>Since</TableHead><TableHead className="text-right">Simulated / yr</TableHead><TableHead className="text-right">Actual / yr</TableHead><TableHead className="text-right">Daily correlation</TableHead></TableRow></TableHeader>
+            <TableBody>
+              {data.validation.map((v) => (
+                <TableRow key={v.etf}><TableCell>{v.etf}</TableCell><TableCell>{v.since}</TableCell><TableCell className="text-right tabular-nums">{pct(v.sim_cagr)}</TableCell><TableCell className="text-right tabular-nums">{pct(v.actual_cagr)}</TableCell><TableCell className="text-right tabular-nums">{v.daily_corr.toFixed(3)}</TableCell></TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </CollapsiblePanel>
+      </CollapsibleRoot>
+
+      <Footnote>
+        Prices: Yahoo Finance daily adjusted closes (dividends reinvested). Longer-history proxies: VBMFX for BND, VISVX for VBR, VGTSX for VXUS, VUSTX for TLT; T-bills from ^IRX. Signals use each day's close and trade the next day. Leveraged sleeves pay T-bills + 0.5% on the borrowed part plus ETF fees; 0.05% slippage per trade. Taxes are ignored: frequent trading in a taxable account would lower these returns. Past results do not predict future returns. This is research, not personalized financial advice.
+      </Footnote>
+    </PageLayout>
+  );
+}
+render(<Report />);
+</script>
