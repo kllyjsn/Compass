@@ -67,7 +67,7 @@ def run(strategy: Strategy, px: pd.DataFrame, start=START):
             value *= 1 - SLIPPAGE * to
             hold = t[i] * value
             turnover += to
-            trades += changed
+            trades += to > 1e-6
         nav[i] = value
     nav = pd.Series(nav, index=idx, name=strategy.key)
     return nav, trades, target
